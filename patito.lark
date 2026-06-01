@@ -1,0 +1,121 @@
+from lark import Lark
+
+patito = Lark(r"""
+    TOKEN_PROGRAM:      "PROGRAM" 
+    TOKEN_START:        "BEGIN"    
+    TOKEN_END:          "END"      
+    TOKEN_VARS:         "VARS"  
+    TOKEN_INT:          "INT"      
+    TOKEN_FLOAT:        "FLOAT"    
+    TOKEN_PRINT:        "PRINT"    
+    TOKEN_WHILE:        "WHILE"    
+    TOKEN_DO:           "DO"       
+    TOKEN_IF:           "IF"       
+    TOKEN_ELSE:         "ELSE"     
+    TOKEN_VOID:         "VOID"     
+    TOKEN_ID:           /[a-zA-Z\_][a-zA-Z0-9\_]*/
+    TOKEN_LETRERO:      ESCAPED_STRING
+    TOKEN_CTE_INT:      /[0-9]+/       
+    TOKEN_CTE_FLOAT:    /[0-9]+.[0-9]+/
+    TOKEN_SEMICOLON:    ";"            
+    TOKEN_COMMA:        ","            
+    TOKEN_COLON:        ":"            
+    TOKEN_LBRACE:       "{"           
+    TOKEN_RBRACE:       "}"           
+    TOKEN_LBRACKET:     "["            
+    TOKEN_RBRACKET:     "]"            
+    TOKEN_LPAREN:       "("            
+    TOKEN_RPAREN:       ")"            
+    TOKEN_SUM:          "+"            
+    TOKEN_SUBS:         "-"            
+    TOKEN_DIV:          "/"            
+    TOKEN_TIMES:        "*"            
+    TOKEN_EQUALS:       "="            
+    TOKEN_GT:           ">" 
+    TOKEN_LT:           "<"    
+    TOKEN_DIFF:         "!="           
+    TOKEN_ISEQUAL:      "=="          
+
+    cte:                TOKEN_CTE_FLOAT
+                        | TOKEN_CTE_INT
+    tipo:               TOKEN_INT
+                        | TOKEN_FLOAT
+    factor:             TOKEN_LPAREN expresion TOKEN_RPAREN
+                        | TOKEN_SUM factor_
+                        | TOKEN_SUBS factor_
+                        | factor_
+                        | llamada
+    factor_:            cte
+                        | TOKEN_ID
+    llamada:            TOKEN_ID TOKEN_LPAREN llamada_ TOKEN_RPAREN
+    llamada_:           expresion llamada__
+                        | 
+    llamada__:          TOKEN_COMMA expresion llamada__
+                        | 
+    termino :           factor termino_
+    termino_:           TOKEN_TIMES termino
+                        | TOKEN_DIV termino
+                        |   
+    exp:                termino exp_
+    exp_:               TOKEN_SUM exp
+                        | TOKEN_SUBS exp
+                        | 
+    expresion:          exp expresion_
+    expresion_:          expresion__
+                        | 
+    expresion__:         TOKEN_GT exp
+                        | TOKEN_LT exp
+                        | TOKEN_DIFF exp
+                        | TOKEN_ISEQUAL exp
+
+    asigna:             TOKEN_ID TOKEN_EQUALS expresion TOKEN_SEMICOLON
+    imprime:            TOKEN_PRINT TOKEN_LPAREN imprime_ TOKEN_RPAREN TOKEN_SEMICOLON
+    imprime_:           expresion imprime__
+                        | TOKEN_LETRERO imprime__
+    imprime__:         TOKEN_COMMA imprime_
+                        | 
+    condicion:          TOKEN_IF TOKEN_LPAREN expresion TOKEN_RPAREN cuerpo condicion_ TOKEN_SEMICOLON
+    condicion_:         TOKEN_ELSE cuerpo
+                        | 
+    ciclo:              TOKEN_WHILE TOKEN_LPAREN expresion TOKEN_RPAREN TOKEN_DO cuerpo TOKEN_SEMICOLON
+    estatuto:           asigna
+                        | condicion
+                        | ciclo
+                        | imprime
+                        | llamada TOKEN_SEMICOLON
+                        | TOKEN_LBRACKET estatuto_ TOKEN_RBRACKET
+    estatuto_:          estatuto estatuto_
+                        | 
+    vars:               TOKEN_VARS vars_
+    vars_:              TOKEN_ID vars__ tipo TOKEN_SEMICOLON vars___
+    vars__:             TOKEN_COMMA TOKEN_ID vars__
+                        | TOKEN_COLON
+    vars___:            vars_
+                        | 
+    cuerpo:             TOKEN_LBRACE cuerpo_ TOKEN_RBRACE
+    cuerpo_:            estatuto cuerpo_
+                        | 
+    funcs:              TOKEN_VOID TOKEN_ID TOKEN_LPAREN funcs_ TOKEN_RPAREN TOKEN_LBRACE funcs___ cuerpo TOKEN_RBRACE TOKEN_SEMICOLON
+                        | tipo TOKEN_ID TOKEN_LPAREN funcs_ TOKEN_RPAREN TOKEN_LBRACE funcs___ cuerpo TOKEN_RBRACE TOKEN_SEMICOLON
+    funcs_:             TOKEN_ID TOKEN_COLON tipo funcs__
+                        | 
+    funcs__:            TOKEN_COMMA TOKEN_ID TOKEN_COLON tipo funcs__
+                        | 
+    funcs___:            TOKEN_VARS
+                        |   
+    programa:           TOKEN_PROGRAM" "TOKEN_ID TOKEN_SEMICOLON programa_ programa__ TOKEN_START cuerpo TOKEN_END
+    programa_:          vars 
+                        |
+    programa__:         funcs programa__
+                        |
+
+
+    %import common.WS
+    %ignore WS
+    %import common.ESCAPED_STRING
+
+
+""", start="programa")
+
+
+print( patito.parse('PROGRAM A ; VARS a,b,c: INT; HOLA,MUND_,f: FLOAT; BEGIN { a=1+2 } END') )
