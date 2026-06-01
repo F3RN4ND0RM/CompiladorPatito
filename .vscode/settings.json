@@ -61,7 +61,7 @@
   "latex-workshop.latex.clean.fileTypes": [
     "*.aux", "*.bbl", "*.blg", "*.fdb_latexmk",
     "*.fls", "*.log", "*.out", "*.synctex.gz",
-    "*.toc", "*.lof", "*.lot", "*.idx", "*.ilg", "*.ind"
+    "*.toc", "*.lof", "*.lot", "*.idx", "*.ilg", "*.ind", 
   ],
 
   // ── Compilación automática al guardar ───────────────────
