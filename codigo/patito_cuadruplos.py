@@ -143,11 +143,17 @@ class GeneradorCuadruplos:
     def _programa(self, t: Tree):
         nombre = str(t.children[1])
         self.dir_funcs.insertar_funcion(nombre, "VOID")
+        # Q0: salto inicial para evitar ejecutar cuerpos de funciones
+        idx_goto_main = self.fila.agregar("GOTO", "_", "_", "_")
         for child in t.children:
             if isinstance(child, Tree):
                 if   child.data == "programa_":  self._programa_(child)
                 elif child.data == "programa__": self._programa__(child)
-                elif child.data == "cuerpo":     self._cuerpo(child)
+                elif child.data == "cuerpo":
+                    # backpatch: apunta al primer cuádruplo del programa principal
+                    self.fila.completar(idx_goto_main, 3, self.fila.siguiente())
+                    self._cuerpo(child)
+        self.fila.agregar("END", "_", "_", "_")
 
     def _programa_(self, t: Tree):
         for child in t.children:
@@ -211,6 +217,9 @@ class GeneradorCuadruplos:
         self.dir_funcs.insertar_funcion(nombre, tipo_ret)
         self.dir_funcs.abrir_scope(nombre)
 
+        # guardar índice de inicio ANTES de generar cuádruplos del cuerpo
+        inicio_cuad = self.fila.siguiente()
+
         for child in t.children:
             if isinstance(child, Tree):
                 if   child.data == "funcs_":   self._funcs_params(child)
@@ -218,6 +227,10 @@ class GeneradorCuadruplos:
                 elif child.data == "cuerpo":    self._cuerpo(child)
                 elif child.data == "funcs____": self._funcs____(child)
 
+        # marca fin de función; para VOID es alcanzable, para no-VOID queda
+        # inalcanzable tras el RETURN pero no causa error
+        self.fila.agregar("ENDPROC", "_", "_", "_")
+        self.dir_funcs.registrar_inicio_cuad(nombre, inicio_cuad)
         self.dir_funcs.verificar_returnes(nombre)
         self.dir_funcs.cerrar_scope()
 
@@ -628,93 +641,6 @@ class GeneradorCuadruplos:
         return (str(token), "INT")
 
 
-# ============================================================
-#  Programas de prueba
-# ============================================================
-
-TEST_1 = """
-PROGRAM prog1 ;
-VARS
-    a, b, c, d : INT ;
-
-VOID test (a : INT){
-    {
-        PRINT(a);
-    }
-};
-BEGIN {
-    
-    a = d ;
-    b = 3 ;
-    c = a + b * 2 ;
-    test(1);
-    PRINT( c ) ;
-} END
-"""
-
-TEST_2 = """
-PROGRAM prog2 ;
-VARS
-    x : FLOAT ;
-    n : INT ;
-BEGIN {
-    n = 4 ;
-    x = 3.14 ;
-    x = x * 2.0 + 1.0 ;
-    PRINT( "Resultado: " , x ) ;
-} END
-"""
-
-TEST_3 = """
-PROGRAM prog3 ;
-VARS
-    a, b : INT ;
-BEGIN {
-    a = 10 ;
-    b = 5 ;
-    IF ( a > b ) {
-        PRINT( "a es mayor" ) ;
-    } ELSE {
-        PRINT( "b es mayor o igual" ) ;
-    } ;
-} END
-"""
-
-TEST_4 = """
-PROGRAM prog4 ;
-VARS
-    i, suma : INT ;
-BEGIN {
-    i = 1 ;
-    suma = 0 ;
-    WHILE ( i < 6 ) DO {
-        suma = suma + i ;
-        i = i + 1 ;
-    } ;
-    PRINT( suma ) ;
-} END
-"""
-
-TEST_5 = """
-PROGRAM prog5 ;
-VARS
-    a, b, res : INT ;
-VOID calcular ( x : INT , y : INT ) {
-    VARS
-        temp : INT ;
-    {
-        temp = x + y ;
-        PRINT( temp ) ;
-    }
-} ;
-BEGIN {
-    a = 3 ;
-    b = 4 ;
-    calcular( a , b ) ;
-} END
-"""
-
-
 def compilar_y_mostrar(nombre: str, codigo: str) -> None:
     print("=" * 60)
     print(f"  {nombre}")
@@ -723,14 +649,19 @@ def compilar_y_mostrar(nombre: str, codigo: str) -> None:
     try:
         gen.compilar(codigo)
         print(gen.fila)
+        print(gen.dir_funcs)
     except Exception as e:
         print(f"ERROR: {e}")
     print()
 
 
 if __name__ == "__main__":
-    compilar_y_mostrar("TEST 1 — Expresiones aritméticas",     TEST_1)
+    from test_programs import TEST_1, TEST_2, TEST_3, TEST_4, TEST_5, TEST_6, TEST_7, TEST_8
+    compilar_y_mostrar("TEST 1 — Expresiones aritméticas",      TEST_1)
     compilar_y_mostrar("TEST 2 — Flotantes y PRINT con letrero", TEST_2)
     compilar_y_mostrar("TEST 3 — Condicional IF-ELSE",           TEST_3)
     compilar_y_mostrar("TEST 4 — Ciclo WHILE",                   TEST_4)
     compilar_y_mostrar("TEST 5 — Función y llamada",             TEST_5)
+    compilar_y_mostrar("TEST 6 — Fibonacci iterativo",           TEST_6)
+    compilar_y_mostrar("TEST 7 — Fibonacci recursivo",           TEST_7)
+    compilar_y_mostrar("TEST 8 — Factorial recursivo",           TEST_8)

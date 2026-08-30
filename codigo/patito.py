@@ -32,10 +32,12 @@ patito_grammar = r"""
     TOKEN_DIV:          "/"            
     TOKEN_TIMES:        "*"            
     TOKEN_EQUALS:       "="            
-    TOKEN_GT:           ">" 
-    TOKEN_LT:           "<"    
-    TOKEN_DIFF:         "!="           
-    TOKEN_ISEQUAL:      "=="          
+    TOKEN_GTE:          ">="
+    TOKEN_LTE:          "<="
+    TOKEN_GT:           ">"
+    TOKEN_LT:           "<"
+    TOKEN_DIFF:         "!="
+    TOKEN_ISEQUAL:      "=="
 
     cte:                TOKEN_CTE_FLOAT
                         | TOKEN_CTE_INT
@@ -64,7 +66,9 @@ patito_grammar = r"""
     expresion:          exp expresion_
     expresion_:          expresion__
                         | 
-    expresion__:         TOKEN_GT exp
+    expresion__:         TOKEN_GTE exp
+                        | TOKEN_LTE exp
+                        | TOKEN_GT exp
                         | TOKEN_LT exp
                         | TOKEN_DIFF exp
                         | TOKEN_ISEQUAL exp

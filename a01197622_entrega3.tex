@@ -40,7 +40,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \lhead{\textsc{Compiladores}}
-\rhead{\textsc{Tokens y Gramáticas}}
+\rhead{\textsc{Patito — Entrega \#5}}
 \cfoot{\thepage}
 
 % ── Ambientes de teoremas ────────────────────────────────────
@@ -85,7 +85,7 @@
     \vspace*{2cm}
     {\LARGE\bfseries Compiladores\par}
     \vspace{0.5cm}
-    {\large Patito - entrega \#3 \par}
+    {\large Patito - entrega \#5 \par}
     \vspace{2cm}
     {\large Carlos Fernando Ramos Mena\par}
     \vspace{0.3cm}
@@ -223,7 +223,7 @@ por el analizador léxico (no generan token):
                  \texttt{TOKEN\_INT},\; \texttt{TOKEN\_FLOAT},\;
                  \texttt{TOKEN\_PRINT},\; \texttt{TOKEN\_WHILE},\;
                  \texttt{TOKEN\_DO},\; \texttt{TOKEN\_IF},\; \\
-                 \texttt{TOKEN\_ELSE},\; \texttt{TOKEN\_VOID},\;
+                 \texttt{TOKEN\_ELSE},\; \texttt{TOKEN\_VOID},\; \texttt{TOKEN\_RETURN},\;
                  \texttt{TOKEN\_ID},\; \texttt{TOKEN\_LETRERO},\; \\
                  \texttt{TOKEN\_CTE\_INT},\; \texttt{TOKEN\_CTE\_FLOAT},\;
                  \texttt{TOKEN\_COLON}, \texttt{TOKEN\_SEMICOLON},\; \texttt{TOKEN\_COMMA},\; \\
@@ -1086,9 +1086,13 @@ Se presenta el mapa de puntos neurálgicos del compilador, donde se identifican 
     Verifica que el tipo de \texttt{EXPRESION} sea \texttt{BOOL} &
     \texttt{Error:} La condición del ciclo debe ser de tipo booleano \\ \hline
     %
-    \texttt{P21} & 
+    \texttt{P21} &
     Verifica que el tipo de la asignación sea compatible con el tipo de la variable &
     \texttt{Error:} Tipo incompatible \\ \hline
+    %
+    \texttt{P22} &
+    Al encontrar \texttt{TOKEN\_RETURN}: evalúa \texttt{EXPRESION} y registra su tipo en \texttt{DirFun}. Al cerrar el scope, verifica que el tipo registrado coincida con el tipo de retorno declarado de la función. Las funciones \texttt{VOID} no pueden contener \texttt{RETURN}. &
+    \texttt{Error:} Tipo de retorno incorrecto; función VOID con RETURN; función no-VOID sin RETURN \\ \hline
     %
 \end{longtable}
 
@@ -1355,9 +1359,8 @@ llamada_:  expresion llamada__   [P_PARAM]
 \end{verbatim}
 
 \texttt{[P\_PARAM]} Por cada argumento evaluado genera \texttt{(PARAM, arg, \_, \_)}.\\
-\texttt{[P\_CALL]} Verifica que la función exista en \texttt{DirFun} y genera \texttt{(CALL, nombre\_func, \_, t\textit{n})}, además verifica que los parametros sean del tipo y cantidad correcta.
-\texttt{[P\_RETURN]} Verifica que el valor de retorno sea del tipo correcto y genera \texttt{(RETURN, val, \_, \_)}.
-
+\texttt{[P\_CALL]} Verifica que la función exista en \texttt{DirFun} y genera \texttt{(CALL, nombre\_func, \_, t\textit{n})}, además verifica que los parametros sean del tipo y cantidad correcta. \\
+\texttt{[P\_RETURN]} Verifica que el valor de retorno sea del tipo correcto y genera \texttt{(RETURN, val, \_, \_)}. \\
 % ── 8.3 Tabla resumen ────────────────────────────────────────
 \subsection{Tabla de Puntos Neurálgicos}
 
@@ -1443,6 +1446,9 @@ llamada_:  expresion llamada__   [P_PARAM]
     \texttt{P\_CALL} &
     Verifica existencia de la función. Genera cuádruplo de llamada &
     \texttt{(CALL, func, \_, t\textit{n})} \\ \hline
+    \texttt{P\_RETURN} &
+    Verifica que el valor de retorno sea del tipo correcto &
+    \texttt{(RETURN, val, \_,\_)} \\ \hline
     
 \end{longtable}
 
@@ -1450,6 +1456,7 @@ llamada_:  expresion llamada__   [P_PARAM]
 \subsection{Resultados de Casos de Prueba}
 
 A continuación se presentan los cuádruplos generados por \texttt{patito\_cuadruplos.py} para cada caso de prueba.
+
 
 \subsubsection*{TEST 1. Expresiones aritméticas}
 
@@ -1563,6 +1570,431 @@ A continuación se documenta la distribución de las direcciones virtuales, para
 \end{tabular}
 \end{table}
 
+% ============================================================
+\section{Máquina Virtual}
+% ============================================================
+
+La Máquina Virtual de Patitoc interpreta la lista de cuádruplos generada por el compilador. Su arquitectura consta de tres estructuras principales: \texttt{MemoriaEjecucion}, \texttt{RegistroActivacion} y \texttt{MaquinaVirtual}.
+
+% ── 11.1 MemoriaEjecucion ────────────────────────────────────
+\subsection{Estructura: \texttt{MemoriaEjecucion}}
+
+\subsubsection*{Descripción}
+
+\texttt{MemoriaEjecucion} es una memoria de ejecución \emph{plana} implementada sobre un diccionario Python \texttt{\_mem: dict[int, object]}. Cada dirección virtual, asignada en tiempo de compilación, es la clave entera; su valor es el dato en tiempo de ejecución. La clase define cinco segmentos lógicos identificados exclusivamente por el rango numérico de la dirección.
+
+\begin{table}[H]
+\centering
+\caption{Segmentos lógicos de \texttt{MemoriaEjecucion}}
+\label{tab:segmentos-mem}
+\begin{tabular}{|c|c|l|}
+    \hline
+    \texttt{Segmento} & \texttt{Rango} & \texttt{Contenido} \\ \hline
+    \texttt{global} & 1000--1999 & Variables globales del programa \\ \hline
+    \texttt{local}  & 2000--2999 & Variables locales de funciones  \\ \hline
+    \texttt{param}  & 3000--3999 & Parámetros de funciones         \\ \hline
+    \texttt{temp}   & 4000--4999 & Temporales del compilador       \\ \hline
+    \texttt{const}  & 5000--5999 & Constantes literales (solo lectura) \\ \hline
+\end{tabular}
+\end{table}
+
+\subsubsection*{Versión gráfica}
+ 
+\begin{table}[H]
+\centering
+\caption{Mapa de la \texttt{MemoriaEjecucion} y ejemplo de estado}
+\label{tab:memejecucion}
+\begin{tabular}{|c|c|l||c|c|}
+    \hline
+    \multicolumn{3}{|c||}{\textbf{Espacio de Direcciones}} &
+    \multicolumn{2}{c|}{\textbf{Snapshot en ejecución}} \\
+    \hline
+    \textbf{Rango} & \textbf{Segmento} & \textbf{Contenido típico} &
+    \textbf{Addr} & \textbf{\_mem{[}addr{]}} \\ \hline
+    \colorbox{green!20}{1000--1999}  & \texttt{global} & INT/FLOAT/BOOL globales & 1000 & 10   \\ \hline
+    \colorbox{blue!15}{2000--2999}   & \texttt{local}  & INT/FLOAT/BOOL locales  & 2000 & 7    \\ \hline
+    \colorbox{orange!20}{3000--3999} & \texttt{param}  & Parámetros de función   & 3000 & 3    \\ \hline
+    \colorbox{yellow!30}{4000--4999} & \texttt{temp}   & Temporales BOOL/INT/FLT & 4200 & True \\ \hline
+    \colorbox{gray!20}{5000--5999}   & \texttt{const}  & Literales (read-only)   & 5000 & 10   \\ \hline
+\end{tabular}
+\end{table}
+
+El diccionario interno en un momento concreto de ejecución luce así:
+
+\begin{verbatim}
+_mem = {
+    1000: 10,     # variable 'a', INT global
+    1001:  5,     # variable 'b', INT global
+    3000:  3,     # parámetro 'x', INT
+    4200: True,   # temporal t1, BOOL
+    5000: 10,     # constante literal 10
+    5001:  5,     # constante literal 5
+}
+\end{verbatim}
+
+\subsubsection*{Métodos de acceso principales}
+
+\begin{table}[H]
+\centering
+\caption{Métodos de \texttt{MemoriaEjecucion}}
+\label{tab:metodos-mem}
+\begin{tabular}{|p{3.8cm}|p{1.5cm}|p{7.7cm}|}
+    \hline
+    \texttt{Método} & \texttt{Costo} & \texttt{Descripción} \\ \hline
+    \texttt{segmento(addr)} & $O(1)$ &
+    Recorre la lista de 5 segmentos y retorna el nombre del segmento al que pertenece \texttt{addr}. Lanza \texttt{RuntimeError} si la dirección está fuera de rango. \\ \hline
+    \texttt{leer(addr)} & $O(1)$ &
+    Valida el rango y retorna \texttt{\_mem.get(addr, 0)}.  \\ \hline
+    \texttt{escribir(addr, valor)} & $O(1)$ &
+    Verifica que \texttt{addr} no pertenezca al segmento \texttt{const} (protección de solo lectura) y actualiza \texttt{\_mem[addr]}. \\ \hline
+    \texttt{precargar(addr, valor)} & $O(1)$ &
+    Carga constantes literales sin validar el segmento; invocado una sola vez al construir \texttt{MaquinaVirtual}. \\ \hline
+    \texttt{dump()} & $O(n)$ &
+    Retorna una cadena de depuración con todas las entradas del diccionario ordenadas por dirección, indicando su segmento. \\ \hline
+\end{tabular}
+\end{table}
+
+% ── 11.2 RegistroActivacion ──────────────────────────────────
+\subsection{Estructura: \texttt{RegistroActivacion}}
+
+\subsubsection*{Descripción}
+
+Cada llamada a función empuja un \texttt{RegistroActivacion} sobre la pila de llamadas de \texttt{MaquinaVirtual}. El registro almacena el estado mínimo necesario para restaurar la ejecución al retornar.
+
+\subsubsection*{Versión gráfica}
+
+El siguiente esquema muestra el estado de la pila durante la ejecución de \texttt{fib(2)} (Fibonacci recursivo), donde tres frames están activos simultáneamente:
+
+\begin{table}[H]
+\centering
+\caption{Estado de la pila de llamadas durante \texttt{fib(2)}}
+\label{tab:pila-activacion}
+\begin{tabular}{|c|c|c|c|p{4cm}|}
+    \hline
+    \textbf{Frame} & \texttt{nombre} & \texttt{retorno\_ip} & \texttt{retorno\_dir} & \texttt{snapshot} \\ \hline
+    tope (3er) & \texttt{"fib"} & 12 & 4003 & \{2000:0, 2001:1\} \\ \hline
+    2do        & \texttt{"fib"} & 12 & 4001 & \{2000:0, 2001:0\} \\ \hline
+    base (1er) & \texttt{"fib"} & 23 & 4005 & \{\}              \\ \hline
+\end{tabular}
+\end{table}
+
+\subsubsection*{Campos}
+
+\begin{table}[H]
+\centering
+\caption{Campos de \texttt{RegistroActivacion}}
+\label{tab:registro-activacion}
+\begin{tabular}{|p{3.2cm}|p{2.8cm}|p{7cm}|}
+    \hline
+    \texttt{Campo} & \texttt{Tipo} & \texttt{Descripción} \\ \hline
+    \texttt{nombre} & \texttt{str} &
+    Nombre de la función llamada. Usado para mensajes de error y depuración. \\ \hline
+    \texttt{retorno\_ip} & \texttt{int} &
+    Índice del cuádruplo al que retorna la ejecución después de \texttt{ENDPROC} o \texttt{RETURN}. Equivale a \texttt{ip + 1} del cuádruplo \texttt{CALL}. \\ \hline
+    \texttt{retorno\_dir} & \texttt{int | None} &
+    Dirección virtual donde se almacena el valor de retorno. Es \texttt{None} para funciones \texttt{VOID}. \\ \hline
+    \texttt{snapshot} & \texttt{dict} &
+    Captura de los valores actuales de locales y parámetros tomada \emph{antes} de sobrescribirlos con los de la nueva llamada. Se restaura con \texttt{\_mem.update(snapshot)} al retornar, habilitando la recursión. \\ \hline
+\end{tabular}
+\end{table}
+
+% ── 11.3 MaquinaVirtual ──────────────────────────────────────
+\subsection{Estructura: \texttt{MaquinaVirtual}}
+
+\subsubsection*{Descripción}
+
+\texttt{MaquinaVirtual} es el ejecutor de cuádruplos. Mantiene un puntero de instrucción \texttt{ip} e itera sobre la lista de cuádruplos invocando \texttt{\_despachar(op, arg1, arg2, res)} en cada paso.
+
+\subsubsection*{Atributos principales}
+
+\begin{table}[H]
+\centering
+\caption{Atributos de \texttt{MaquinaVirtual}}
+\label{tab:mv-atributos}
+\begin{tabular}{|p{3.5cm}|p{3.5cm}|p{6cm}|}
+    \hline
+    \texttt{Atributo} & \texttt{Tipo} & \texttt{Descripción} \\ \hline
+    \texttt{cuadruplos} & \texttt{list[tuple]} &
+    Lista de cuádruplos \texttt{(op,\,arg1,\,arg2,\,res)} producidos por el compilador. \\ \hline
+    \texttt{memoria} & \texttt{MemoriaEjecucion} &
+    Almacén plano de variables, parámetros, temporales y constantes. \\ \hline
+    \texttt{pila\_llamadas} & \texttt{list[Registro\-Activacion]} &
+    Pila de frames activos; crece con \texttt{CALL} y decrece con \texttt{RETURN}/\texttt{ENDPROC}. \\ \hline
+    \texttt{pila\_params} & \texttt{list} &
+    Staging de argumentos: los valores evaluados por cuádruplos \texttt{PARAM} se acumulan aquí hasta el siguiente \texttt{CALL}. \\ \hline
+    \texttt{ip} & \texttt{int} &
+    Puntero de instrucción; índice del cuádruplo en ejecución. \\ \hline
+\end{tabular}
+\end{table}
+
+\subsubsection*{Ciclo de ejecución}
+
+\begin{verbatim}
+def ejecutar(self) -> None:
+    self.ip = 0
+    while self.ip < len(self.cuadruplos):
+        op, arg1, arg2, res = self.cuadruplos[self.ip]
+        self._despachar(op, arg1, arg2, res)
+\end{verbatim}
+
+Los opcodes soportados son: \texttt{=}, \texttt{+}, \texttt{-}, \texttt{*}, \texttt{/}, \texttt{NEG}, \texttt{>}, \texttt{<}, \texttt{!=}, \texttt{==}, \texttt{PRINT}, \texttt{GOTO}, \texttt{GOTOF}, \texttt{PARAM}, \texttt{CALL}, \texttt{RETURN}, \texttt{ENDPROC}, \texttt{END}.
+
+% ── 11.4 Direcciones Virtuales ───────────────────────────────
+\subsection{Cómo las Direcciones Virtuales Indexan la Memoria}
+
+El compilador asigna a cada símbolo una dirección virtual única en tiempo de compilación. Esta dirección es el único dato que la MV necesita para acceder a la memoria en tiempo de ejecución.
+
+\begin{enumerate}
+    \item \textbf{Identificación de segmento sin metadato extra.}
+    El rango numérico de la dirección identifica el segmento de forma fácil:
+    $1000{-}1999 : \texttt{global}$,
+    $2000{-}2999 : \texttt{local}$,
+    $3000{-}3999 : \texttt{param}$,
+    $4000{-}4999 : \texttt{temp}$,
+    $5000{-}5999 : \texttt{const}$.
+
+    \item \textbf{Acceso en $O(1)$ sin búsqueda por nombre.}
+    Los cuádruplos contienen direcciones enteras  en lugar de nombres (\texttt{a}, \texttt{t1}). La MV ejecuta \texttt{\_mem[addr]} directamente, sin consultar el Directorio de Funciones ni la Tabla de Variables
+
+    \item \textbf{Constantes precargadas al iniciar.}
+    Al construir \texttt{MaquinaVirtual}, todas las constantes literales registradas en \texttt{MemoriaVirtual} se copian al diccionario vía \texttt{precargar}, ocupando el segmento \texttt{const}
+
+    \item \textbf{Recursión habilitada por \texttt{snapshot}.}
+    Las direcciones de locales y parámetros son únicas globalmente, por lo que llamadas recursivas sobrescribirían los valores de la invocación padre. Cada \texttt{RegistroActivacion} captura un \texttt{snapshot} antes de sobrescribir y lo restaura al retornar, logrando el efecto de un frame por invocación.
+\end{enumerate}
+
+\begin{table}[H]
+\centering
+\caption{Ejemplo de traducción nombre $\rightarrow$ dirección virtual $\rightarrow$ clave en \texttt{\_mem}}
+\label{tab:traduccion-dirs}
+\begin{tabular}{|p{3.5cm}|p{1.8cm}|p{2cm}|p{2cm}|p{3.3cm}|}
+    \hline
+    \texttt{Símbolo} & \texttt{Categoría} & \texttt{Segmento} & \texttt{Dirección} & \texttt{En \_mem} \\ \hline
+    \texttt{a} (global INT)   & VAR   & global & 1000 & \texttt{\_mem[1000] = 10}   \\ \hline
+    \texttt{b} (global INT)   & VAR   & global & 1001 & \texttt{\_mem[1001] = 5}    \\ \hline
+    \texttt{x} (param INT)    & PARAM & param  & 3000 & \texttt{\_mem[3000] = 3}    \\ \hline
+    \texttt{t1} (BOOL temp)   & TEMP  & temp   & 4200 & \texttt{\_mem[4200] = True} \\ \hline
+    \texttt{``10''} (const INT) & CONST & const  & 5000 & \texttt{\_mem[5000] = 10}   \\ \hline
+\end{tabular}
+\end{table}
+
+% ── 11.5 Casos de Prueba ─────────────────────────────────────
+\subsection{Casos de Prueba de la Máquina Virtual}
+
+A continuación se presentan los programas de prueba, sus cuádruplos reales con direcciones virtuales y la salida producida por la MV.
+
+% ── TEST 2 ───────────────────────────────────────────────────
+\subsubsection*{TEST 2 --- Flotantes y \texttt{PRINT} con letrero}
+
+
+\begin{verbatim}
+PROGRAM prog2 ;
+VARS x : FLOAT ; n : INT ;
+BEGIN {
+    n = 4 ;
+    x = 3.14 ;
+    x = x * 2.0 + 1.0 ;
+    PRINT( "Resultado: " , x ) ;
+} END
+\end{verbatim}
+
+Cuádruplos generados (con direcciones virtuales):
+\begin{verbatim}
+#   Op      Arg1   Arg2   Res    Nota
+--  ------  -----  -----  -----  --------------------------------
+0   GOTO    _      _      1
+1   =       5000   _      1000   n  = const(4)
+2   =       5100   _      1100   x  = const(3.14)
+3   *       1100   5101   4100   t1 = x * const(2.0)
+4   +       4100   5102   4101   t2 = t1 + const(1.0)
+5   =       4101   _      1100   x  = t2
+6   PRINT   5300   _      _      imprime "Resultado: "
+7   PRINT   1100   _      _      imprime x
+8   END     _      _      _
+\end{verbatim}
+
+Salida:
+\begin{verbatim}
+Resultado:
+7.28
+\end{verbatim}
+
+% ── TEST 3 ───────────────────────────────────────────────────
+\subsubsection*{TEST 3 --- Condicional \texttt{IF-ELSE}}
+
+
+\begin{verbatim}
+PROGRAM prog3 ;
+VARS a, b : INT ;
+BEGIN {
+    a = 10 ; b = 5 ;
+    IF ( a > b ) { PRINT( "a es mayor" ) ; }
+    ELSE         { PRINT( "b es mayor o igual" ) ; } ;
+} END
+\end{verbatim}
+
+\begin{verbatim}
+#   Op      Arg1   Arg2   Res    Nota
+--  ------  -----  -----  ---  ------------------------------------
+0   GOTO    _      _      1
+1   =       5000   _      1000  a = 10
+2   =       5001   _      1001  b = 5
+3   >       1000   1001   4200  t1 = a > b
+4   GOTOF   4200   _      7     si t1=False, salta al bloque ELSE
+5   PRINT   5300   _      _     "a es mayor"
+6   GOTO    _      _      8     salta el bloque ELSE
+7   PRINT   5301   _      _     "b es mayor o igual"
+8   END     _      _      _
+\end{verbatim}
+
+Salida:
+\begin{verbatim}
+a es mayor
+\end{verbatim}
+
+% ── TEST 4 ───────────────────────────────────────────────────
+\subsubsection*{TEST 4 --- Ciclo \texttt{WHILE}}
+
+
+\begin{verbatim}
+PROGRAM prog4 ;
+VARS i, suma : INT ;
+BEGIN {
+    i = 1 ; suma = 0 ;
+    WHILE ( i < 6 ) DO {
+        suma = suma + i ;
+        i = i + 1 ;
+    } ;
+    PRINT( suma ) ;
+} END
+\end{verbatim}
+
+Cuádruplos generados:
+\begin{verbatim}
+#   Op      Arg1   Arg2   Res    Nota
+--  ------  -----  -----  ---  ------------------------------------
+0   GOTO    _      _      1
+1   =       5000   _      1000  i    = 1
+2   =       5001   _      1001  suma = 0
+3   <       1000   5002   4200  t1   = i < 6
+4   GOTOF   4200   _      10    si t1=False, sale del ciclo
+5   +       1001   1000   4000  t2   = suma + i
+6   =       4000   _      1001  suma = t2
+7   +       1000   5000   4001  t3   = i + 1
+8   =       4001   _      1000  i    = t3
+9   GOTO    _      _      3     regresa a evaluar la condición
+10  PRINT   1001   _      _     imprime suma
+11  END     _      _      _
+\end{verbatim}
+
+Salida:
+\begin{verbatim}
+15
+\end{verbatim}
+
+% ── TEST 6 ───────────────────────────────────────────────────
+\subsubsection*{TEST 6 --- Fibonacci Iterativo}
+
+
+\begin{verbatim}
+PROGRAM fibonacci ;
+VARS r : INT ;
+INT fib ( num : INT ) {
+    VARS a, b, temp, i : INT ;
+    {
+        a = 0 ; b = 1 ; i = 0 ;
+        WHILE ( i < num ) DO {
+            temp = a + b ; a = b ; b = temp ; i = i + 1 ;
+        } ;
+    }
+    RETURN a ;
+} ;
+BEGIN {
+    PRINT( "fib(0):" ) ; r = fib( 0 ) ; PRINT( r ) ;
+    PRINT( "fib(5):" ) ; r = fib( 5 ) ; PRINT( r ) ;
+    PRINT( "fib(10):" ) ; r = fib( 10 ) ; PRINT( r ) ;
+} END
+\end{verbatim}
+
+Salida:
+\begin{verbatim}
+fib(0):
+0
+fib(5):
+5
+fib(10):
+55
+\end{verbatim}
+
+% ── TEST 7 ───────────────────────────────────────────────────
+\subsubsection*{TEST 7 --- Fibonacci Recursivo}
+
+\begin{verbatim}
+PROGRAM fibonacci_recursivo ;
+VARS r : INT ;
+INT fib ( n : INT ) {
+    VARS a, b : INT ;
+    {
+        IF ( n == 0 ) { a = 0 ; } ELSE {
+            IF ( n == 1 ) { a = 1 ; } ELSE {
+                a = fib( n - 1 ) ;
+                b = fib( n - 2 ) ;
+                a = a + b ;
+            } ;
+        } ;
+    }
+    RETURN a ;
+} ;
+BEGIN {
+    PRINT( "fib(0):" ) ; r = fib( 0 ) ; PRINT( r ) ;
+    PRINT( "fib(5):" ) ; r = fib( 5 ) ; PRINT( r ) ;
+    PRINT( "fib(10):" ) ; r = fib( 10 ) ; PRINT( r ) ;
+} END
+\end{verbatim}
+
+Salida:
+\begin{verbatim}
+fib(0):
+0
+fib(5):
+5
+fib(10):
+55
+\end{verbatim}
+
+% ── TEST 8 ───────────────────────────────────────────────────
+\subsubsection*{TEST 8 --- Factorial Recursivo}
+
+\begin{verbatim}
+PROGRAM factorial ;
+VARS r : INT ;
+INT fact ( n : INT ) {
+    VARS res : INT ;
+    {
+        IF ( n == 0 ) { res = 1 ; } ELSE {
+            res = n * fact( n - 1 ) ;
+        } ;
+    }
+    RETURN res ;
+} ;
+BEGIN {
+    PRINT( "fact(0):" ) ; r = fact( 0 ) ; PRINT( r ) ;
+    PRINT( "fact(5):" ) ; r = fact( 5 ) ; PRINT( r ) ;
+    PRINT( "fact(10):" ) ; r = fact( 10 ) ; PRINT( r ) ;
+} END
+\end{verbatim}
+
+Salida:
+\begin{verbatim}
+fact(0):
+1
+fact(5):
+120
+fact(10):
+3628800
+\end{verbatim}
+
+
 \section*{Declaración de Uso de Inteligencia Artificial}
 
 El presente documento fue elaborado con apoyo de la herramienta de
@@ -1578,10 +2010,11 @@ Las actividades en las que se utilizó la herramienta fueron:
           Tablas de Variables.
     \item Generación del código en Python que implementa estructuras básicas
           de pilas y filas.
+    \item Elaboración de las tablas de métodos de acceso y casos de prueba.
 \end{itemize}
 
 Todas las decisiones de diseño, definición de tokens, gramática
-y validaciones semánticas fueron revisadas y aprobadas por el
+y validaciones semánticas y documentación fueron revisadas y aprobadas por el
 autor, quien es responsable del contenido final del documento.
 
 \vspace{1cm}

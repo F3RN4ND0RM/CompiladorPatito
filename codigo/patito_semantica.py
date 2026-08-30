@@ -10,13 +10,17 @@ CATEGORIAS_VALIDAS = {"VAR", "PARAM"}
 # ── Cubo Semántico ───────────────────────────────────────────
 CUBO_SEMANTICO = {
     ("INT",   "INT"):   {"+": "INT",   "-": "INT",   "*": "INT",   "/": "FLOAT",
-                         ">": "BOOL",  "<": "BOOL",  "!=": "BOOL", "==": "BOOL"},
+                         ">": "BOOL",  "<": "BOOL",  "!=": "BOOL", "==": "BOOL",
+                         ">=": "BOOL", "<=": "BOOL"},
     ("INT",   "FLOAT"): {"+": "FLOAT", "-": "FLOAT", "*": "FLOAT", "/": "FLOAT",
-                         ">": "BOOL",  "<": "BOOL",  "!=": "BOOL", "==": "BOOL"},
+                         ">": "BOOL",  "<": "BOOL",  "!=": "BOOL", "==": "BOOL",
+                         ">=": "BOOL", "<=": "BOOL"},
     ("FLOAT", "INT"):   {"+": "FLOAT", "-": "FLOAT", "*": "FLOAT", "/": "FLOAT",
-                         ">": "BOOL",  "<": "BOOL",  "!=": "BOOL", "==": "BOOL"},
+                         ">": "BOOL",  "<": "BOOL",  "!=": "BOOL", "==": "BOOL",
+                         ">=": "BOOL", "<=": "BOOL"},
     ("FLOAT", "FLOAT"): {"+": "FLOAT", "-": "FLOAT", "*": "FLOAT", "/": "FLOAT",
-                         ">": "BOOL",  "<": "BOOL",  "!=": "BOOL", "==": "BOOL"},
+                         ">": "BOOL",  "<": "BOOL",  "!=": "BOOL", "==": "BOOL",
+                         ">=": "BOOL", "<=": "BOOL"},
 }
 
 
@@ -93,6 +97,27 @@ class MemoriaVirtual:
         }
         return direccion
 
+    def get_constantes_valores(self) -> dict:
+        """Retorna {dirección: valor_python} para todas las constantes."""
+        import ast
+        resultado = {}
+        for (valor_str, tipo), info in self._constantes.items():
+            addr = info["direccion"]
+            if tipo == "INT":
+                resultado[addr] = int(valor_str)
+            elif tipo == "FLOAT":
+                resultado[addr] = float(valor_str)
+            elif tipo == "STRING":
+                try:
+                    resultado[addr] = ast.literal_eval(valor_str)
+                except Exception:
+                    resultado[addr] = valor_str.strip('"')
+            elif tipo == "BOOL":
+                resultado[addr] = valor_str.lower() == "true"
+            else:
+                resultado[addr] = valor_str
+        return resultado
+
 
 # ============================================================
 #  Tabla de Variables
@@ -117,12 +142,12 @@ class TablaVariables:
         self.scope = nombre_scope
         self._tabla: dict[str, dict] = {}
 
-    # ── Verificar existencia (P2) ────────────────────────────
+    # ── Verificar existencia ────────────────────────────
     def existe(self, nombre: str) -> bool:
         """Retorna True si la variable ya fue declarada en este scope."""
         return nombre in self._tabla
 
-    # ── Insertar variable o parámetro (P3) ───────────────────
+    # ── Insertar variable o parámetro ───────────────────
     def insertar(self, nombre: str, categoria: str, tipo: str, direccion: int) -> None:
         """
         Inserta una variable o parámetro en la tabla.
@@ -209,7 +234,7 @@ class DirectorioFunciones:
         self._scope_actual: str | None    = None
         self._memoria = MemoriaVirtual()
 
-    # ── P1, P4: insertar función ─────────────────────────────
+    # ── insertar función ─────────────────────────────
     def insertar_funcion(self, nombre: str, tipo_retorno: str = "VOID") -> None:
         """
         Crea una nueva entrada en el directorio.
@@ -228,7 +253,7 @@ class DirectorioFunciones:
         }
         self._scope_actual = nombre
 
-    # ── P5: abrir scope ──────────────────────────────────────
+    # ── abrir scope ──────────────────────────────────────
     def abrir_scope(self, nombre: str) -> None:
         """Establece el scope actual al entrar a una función."""
         if not self.existe_funcion(nombre):
@@ -237,7 +262,7 @@ class DirectorioFunciones:
             )
         self._scope_actual = nombre
 
-    # ── P6: cerrar scope ─────────────────────────────────────
+    # ──    cerrar scope ─────────────────────────────────────
     def cerrar_scope(self) -> None:
         """Cierra el scope actual y regresa al scope global."""
         self._scope_actual = self._nombre_global()
@@ -253,7 +278,7 @@ class DirectorioFunciones:
         """Retorna True si la función ya fue declarada."""
         return nombre in self._directorio
 
-    # ── P10: buscar función ──────────────────────────────────
+    # ── buscar función ──────────────────────────────────
     def buscar_funcion(self, nombre: str) -> dict | None:
         """Retorna el registro de la función o None si no existe."""
         return self._directorio.get(nombre, None)
@@ -352,6 +377,29 @@ class DirectorioFunciones:
                     f"se esperaba '{tipo_retorno}'."
                 )
 
+    # ── Soporte para la Máquina Virtual ─────────────────────────
+
+    def registrar_inicio_cuad(self, nombre: str, inicio: int) -> None:
+        """Registra el índice del primer cuádruplo de la función."""
+        if nombre in self._directorio:
+            self._directorio[nombre]["inicio_cuad"] = inicio
+
+    def get_inicio_cuad(self, nombre: str) -> int:
+        """Retorna el índice del primer cuádruplo de la función."""
+        func = self._directorio.get(nombre)
+        if func is None:
+            raise RuntimeError(f"Función no encontrada: '{nombre}'")
+        return func.get("inicio_cuad", 0)
+
+    def get_params_dir(self, nombre: str) -> list:
+        """Retorna las direcciones de los parámetros en orden de declaración."""
+        func = self._directorio.get(nombre)
+        if func is None:
+            raise RuntimeError(f"Función no encontrada: '{nombre}'")
+        tabla = func["tabla_vars"]._tabla
+        return [reg["direccion"] for reg in tabla.values()
+                if reg["categoria"] == "PARAM"]
+
     def verificar_llamada(self, nombre: str, tipos_args: list) -> None:
         funcion = self.buscar_funcion(nombre)
         if funcion is None:
@@ -378,7 +426,7 @@ class DirectorioFunciones:
             )
         return registro
 
-    # ── P7, P9: buscar variable en scope local o global ──────
+    # ── buscar variable en scope local o global ──────
     def buscar_variable(self, nombre: str) -> dict | None:
         """
         Busca una variable primero en el scope local,
